@@ -13,7 +13,8 @@ pool:
   vmImage: ubuntu-latest
 
 variables:
-  nodeVersion: '20.x'
+  nodeVersion: '22.x'
+  appDir: 'zaprunner-main'
   artifactName: 'webapp'
   azureServiceConnection: 'azure-service-connection'
   appName: 'mi-aplicacion-azure'
@@ -27,21 +28,28 @@ stages:
       - job: AutomatedTests
         displayName: 'Ejecutar tests'
         steps:
-          - task: NodeTool@0
+          - task: UseNode@1
             inputs:
-              versionSpec: $(nodeVersion)
+              version: $(nodeVersion)
 
-          - script: npm ci
+          - script: npm install -g pnpm@10
+            displayName: 'Instalar pnpm'
+
+          - script: pnpm install --frozen-lockfile
             displayName: 'Instalar dependencias'
+            workingDirectory: $(appDir)
 
-          - script: npm run lint
+          - script: pnpm run --if-present lint
             displayName: 'Validar calidad del código'
+            workingDirectory: $(appDir)
 
-          - script: npm test -- --coverage
+          - script: pnpm run --if-present test
             displayName: 'Ejecutar pruebas automatizadas'
+            workingDirectory: $(appDir)
 
-          - script: npm run build
+          - script: pnpm run build
             displayName: 'Verificar compilación'
+            workingDirectory: $(appDir)
 
   # 2. BUILD: crear artefacto desplegable
   - stage: Build
@@ -51,19 +59,21 @@ stages:
     jobs:
       - job: Package
         steps:
-          - task: NodeTool@0
+          - task: UseNode@1
             inputs:
-              versionSpec: $(nodeVersion)
+              version: $(nodeVersion)
 
           - script: |
-              npm ci
-              npm run build
+              npm install -g pnpm@10
+              pnpm install --frozen-lockfile
+              pnpm run build
             displayName: 'Preparar aplicación'
+            workingDirectory: $(appDir)
 
           - task: ArchiveFiles@2
             displayName: 'Crear paquete ZIP'
             inputs:
-              rootFolderOrFile: '$(Build.SourcesDirectory)'
+              rootFolderOrFile: '$(Build.SourcesDirectory)/$(appDir)'
               includeRootFolder: false
               archiveType: zip
               archiveFile: '$(Build.ArtifactStagingDirectory)/app.zip'
