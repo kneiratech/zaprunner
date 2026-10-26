@@ -73,44 +73,45 @@ stages:
             artifact: $(artifactName)
             displayName: 'Publicar artefacto'
 
-  # 3. DEPLOY: desplegar solo si Test y Build pasan
-  - stage: DeployStaging
-    displayName: 'Desplegar en staging'
-    dependsOn: Build
-    condition: succeeded()
-    jobs:
-      - deployment: DeployWeb
-        environment: 'webapp-staging'
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - download: current
-                  artifact: $(artifactName)
+  # DESACTIVADO: falta la conexión de servicio de Azure (azure-service-connection).
+#  # 3. DEPLOY: desplegar solo si Test y Build pasan
+#  - stage: DeployStaging
+#    displayName: 'Desplegar en staging'
+#    dependsOn: Build
+#    condition: succeeded()
+#    jobs:
+#      - deployment: DeployWeb
+#        environment: 'webapp-staging'
+#        strategy:
+#          runOnce:
+#            deploy:
+#              steps:
+#                - download: current
+#                  artifact: $(artifactName)
 
-                - task: AzureWebApp@1
-                  displayName: 'Desplegar en Azure App Service'
-                  inputs:
-                    azureSubscription: $(azureServiceConnection)
-                    appType: webAppLinux
-                    appName: $(appName)
-                    deployToSlotOrASE: true
-                    resourceGroupName: 'mi-resource-group'
-                    slotName: $(stagingSlot)
-                    package: '$(Pipeline.Workspace)/$(artifactName)/app.zip'
+#                - task: AzureWebApp@1
+#                  displayName: 'Desplegar en Azure App Service'
+#                  inputs:
+#                    azureSubscription: $(azureServiceConnection)
+#                    appType: webAppLinux
+#                    appName: $(appName)
+#                    deployToSlotOrASE: true
+#                    resourceGroupName: 'mi-resource-group'
+#                    slotName: $(stagingSlot)
+#                    package: '$(Pipeline.Workspace)/$(artifactName)/app.zip'
 
-                - script: |
-                    set -e
-                    for i in $(seq 1 12); do
-                      if curl -fsS "$(STAGING_URL)/health"; then
-                        echo "Smoke test exitoso"
-                        exit 0
-                      fi
-                      echo "Aplicación aún no disponible. Intento $i/12"
-                      sleep 10
-                    done
-                    echo "Falló el smoke test"
-                    exit 1
-                  displayName: 'Smoke test HTTP'
-                  env:
-                    STAGING_URL: $(stagingUrl)
+#                - script: |
+#                    set -e
+#                    for i in $(seq 1 12); do
+#                      if curl -fsS "$(STAGING_URL)/health"; then
+#                        echo "Smoke test exitoso"
+#                        exit 0
+#                      fi
+#                      echo "Aplicación aún no disponible. Intento $i/12"
+#                      sleep 10
+#                    done
+#                    echo "Falló el smoke test"
+#                    exit 1
+#                  displayName: 'Smoke test HTTP'
+#                  env:
+#                    STAGING_URL: $(stagingUrl)
