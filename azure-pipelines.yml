@@ -1,0 +1,98 @@
+# Despliegue de Zaprunner (Next.js exportado como sitio estático) en Azure Static Web Apps.
+#
+# Requisito en Azure DevOps (Pipelines > este pipeline > Edit > Variables):
+#   SWA_DEPLOYMENT_TOKEN  -> token de despliegue de la Static Web App (marcar "Keep this value secret")
+
+trigger:
+  branches:
+    include:
+      - main
+
+pr:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  nodeVersion: '22.x'
+  pnpmVersion: '10'
+  appDir: 'zaprunner-main'
+  artifactName: 'web'
+
+stages:
+  # 1. BUILD: validar tipos y generar el sitio estático (carpeta out/)
+  - stage: Build
+    displayName: 'Validar y construir'
+    jobs:
+      - job: Build
+        displayName: 'Typecheck y build'
+        steps:
+          - task: NodeTool@0
+            displayName: 'Instalar Node.js $(nodeVersion)'
+            inputs:
+              versionSpec: $(nodeVersion)
+
+          - script: npm install -g pnpm@$(pnpmVersion)
+            displayName: 'Instalar pnpm'
+
+          - script: pnpm install --frozen-lockfile
+            displayName: 'Instalar dependencias'
+            workingDirectory: $(appDir)
+
+          - script: pnpm run typecheck
+            displayName: 'Validar tipos (TypeScript)'
+            workingDirectory: $(appDir)
+
+          - script: pnpm run build
+            displayName: 'Construir sitio estático'
+            workingDirectory: $(appDir)
+            env:
+              NEXT_TELEMETRY_DISABLED: '1'
+
+          - publish: '$(appDir)/out'
+            artifact: $(artifactName)
+            displayName: 'Publicar artefacto'
+
+  # 2. DEPLOY: solo en pushes a main (los PR solo validan)
+  - stage: Deploy
+    displayName: 'Desplegar en Azure Static Web Apps'
+    dependsOn: Build
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - job: Deploy
+        displayName: 'Deploy producción'
+        steps:
+          - checkout: none
+
+          - download: current
+            artifact: $(artifactName)
+            displayName: 'Descargar artefacto'
+
+          - task: AzureStaticWebApp@0
+            displayName: 'Subir a Static Web Apps'
+            inputs:
+              workingDirectory: '$(Pipeline.Workspace)'
+              app_location: '$(artifactName)'
+              skip_app_build: true
+              skip_api_build: true
+              azure_static_web_apps_api_token: $(SWA_DEPLOYMENT_TOKEN)
+
+          - script: |
+              set -e
+              for i in $(seq 1 12); do
+                if curl -fsS -o /dev/null "$SITE_URL"; then
+                  echo "Smoke test OK: $SITE_URL"
+                  exit 0
+                fi
+                echo "Sitio aún no disponible. Intento $i/12"
+                sleep 10
+              done
+              echo "Falló el smoke test en $SITE_URL"
+              exit 1
+            displayName: 'Smoke test HTTP'
+            condition: and(succeeded(), ne(variables['SITE_URL'], ''))
+            env:
+              SITE_URL: $(SITE_URL)
